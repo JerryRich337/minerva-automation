@@ -7,106 +7,71 @@
     <meta charset="utf-8" />
 
     <script>
-      // Guard against any leftover/dynamic Calendly click behavior.
-      // Runs early and in capture phase to beat most hydration handlers.
+      // Only these 3 buttons should route to email:
+      // - a.framer-grpph2 (Contact sales)
+      // - a.framer-2klyi6 (Book a demo)
+      // - a.framer-133zkua (Book demo)
       (function () {
         const MAILTO = "mailto:Sales@minerva-automation.com?subject=Book%20demo";
+        const TARGET_SELECTOR =
+          "a.framer-lux5qc.framer-grpph2, a.framer-lux5qc.framer-2klyi6, a.framer-lux5qc.framer-133zkua";
 
-        function rewriteCalendlyAnchors(root) {
+        function ensureMailto(root) {
           try {
             const scope = root && root.querySelectorAll ? root : document;
-            const anchors = scope.querySelectorAll('a[href*="calendly.com"]');
-            for (const a of anchors) {
-              const href = (a.getAttribute("href") || "").toLowerCase();
-              if (!href.includes("calendly.com")) continue;
-              a.setAttribute("href", MAILTO);
+            const targets = scope.querySelectorAll(TARGET_SELECTOR);
+            for (const a of targets) {
+              if (!a || !a.setAttribute) continue;
+              const href = a.getAttribute("href") || "";
+              if (href !== MAILTO) a.setAttribute("href", MAILTO);
+              if (!a.getAttribute("target")) a.setAttribute("target", "_blank");
+              const rel = (a.getAttribute("rel") || "").toLowerCase();
+              if (!rel.includes("noopener")) {
+                a.setAttribute("rel", (rel ? rel + " " : "") + "noopener");
+              }
             }
           } catch {
             // best-effort only
           }
         }
 
-        function getText(el) {
-          try {
-            return (el && (el.innerText || el.textContent) || "").trim().toLowerCase();
-          } catch {
-            return "";
-          }
-        }
-
-        function findAnchorInPath(path) {
-          for (const node of path) {
-            if (!node || node === window || node === document) continue;
-            if (node.tagName && node.tagName.toLowerCase() === "a") return node;
-            if (node.closest) {
-              const a = node.closest("a");
-              if (a) return a;
-            }
-          }
-          return null;
-        }
-
-        function shouldForceMailto(path, anchor) {
-          const anchorText = getText(anchor);
-          if (anchorText.includes("book") && anchorText.includes("demo")) return true;
-
-          for (const node of path) {
-            const t = getText(node);
-            if (t.includes("book") && t.includes("demo")) return true;
-          }
-          return false;
-        }
-
         window.addEventListener(
           "click",
           function (e) {
-            const path = (typeof e.composedPath === "function" ? e.composedPath() : []) || [];
-            const anchor = findAnchorInPath(path) || (e.target && e.target.closest ? e.target.closest("a") : null);
-            const href = (anchor && anchor.getAttribute && anchor.getAttribute("href")) || "";
-
-            // Absolute block: never allow Calendly.
-            if (href && href.toLowerCase().includes("calendly.com")) {
-              e.preventDefault();
-              e.stopPropagation();
-              e.stopImmediatePropagation();
-              if (anchor && anchor.setAttribute) anchor.setAttribute("href", MAILTO);
-              window.location.href = MAILTO;
-              return;
+            const a = e.target && e.target.closest ? e.target.closest(TARGET_SELECTOR) : null;
+            if (!a) return;
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            try {
+              a.setAttribute("href", MAILTO);
+            } catch {
+              // ignore
             }
-
-            // Defensive: if a "Book demo" element is clicked but isn't a mailto link, force mailto.
-            if (shouldForceMailto(path, anchor) && (!href || !href.toLowerCase().startsWith("mailto:"))) {
-              e.preventDefault();
-              e.stopPropagation();
-              e.stopImmediatePropagation();
-              window.location.href = MAILTO;
-            }
+            window.location.href = MAILTO;
           },
           true
         );
 
-        // Rewrite on initial load.
         if (document.readyState === "loading") {
           document.addEventListener("DOMContentLoaded", function () {
-            rewriteCalendlyAnchors(document);
+            ensureMailto(document);
           });
         } else {
-          rewriteCalendlyAnchors(document);
+          ensureMailto(document);
         }
 
-        // Rewrite on hydration / dynamic mutations.
+        // Keep only the 3 target buttons corrected during hydration.
         try {
           const observer = new MutationObserver(function (mutations) {
             for (const m of mutations) {
               if (m.type === "attributes") {
                 const el = m.target;
-                if (el && el.tagName && el.tagName.toLowerCase() === "a") {
-                  rewriteCalendlyAnchors(el.parentNode || document);
-                }
+                if (el && el.nodeType === 1) ensureMailto(el.parentNode || document);
                 continue;
               }
               for (const node of m.addedNodes || []) {
-                if (node && node.nodeType === 1) rewriteCalendlyAnchors(node);
+                if (node && node.nodeType === 1) ensureMailto(node);
               }
             }
           });
@@ -114,63 +79,8 @@
             subtree: true,
             childList: true,
             attributes: true,
-            attributeFilter: ["href"],
+            attributeFilter: ["href", "class"],
           });
-        } catch {
-          // ignore
-        }
-
-        // Some runtimes/extensions may continuously rewrite hrefs; re-apply periodically.
-        try {
-          setInterval(function () {
-            rewriteCalendlyAnchors(document);
-          }, 500);
-        } catch {
-          // ignore
-        }
-
-        // Intercept common navigation APIs in case a click handler opens Calendly directly.
-        try {
-          const originalOpen = window.open;
-          window.open = function (url, target, features) {
-            try {
-              const u = String(url || "");
-              if (u.toLowerCase().includes("calendly.com")) url = MAILTO;
-            } catch {
-              // ignore
-            }
-            return originalOpen.call(this, url, target, features);
-          };
-        } catch {
-          // ignore
-        }
-
-        try {
-          const originalAssign = Location.prototype.assign;
-          Location.prototype.assign = function (url) {
-            try {
-              const u = String(url || "");
-              if (u.toLowerCase().includes("calendly.com")) url = MAILTO;
-            } catch {
-              // ignore
-            }
-            return originalAssign.call(this, url);
-          };
-        } catch {
-          // ignore
-        }
-
-        try {
-          const originalReplace = Location.prototype.replace;
-          Location.prototype.replace = function (url) {
-            try {
-              const u = String(url || "");
-              if (u.toLowerCase().includes("calendly.com")) url = MAILTO;
-            } catch {
-              // ignore
-            }
-            return originalReplace.call(this, url);
-          };
         } catch {
           // ignore
         }
@@ -7553,7 +7463,6 @@
                   <!--$--><a
                     class="framer-2klyi6 framer-lux5qc"
                     href="mailto:Sales@minerva-automation.com?subject=Book%20demo"
-                    onclick="event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();window.location.href='mailto:Sales@minerva-automation.com?subject=Book%20demo';"
                     target="_blank"
                     rel="noopener"
                     ><div
@@ -15479,7 +15388,6 @@
                 <!--$--><a
                   class="framer-133zkua framer-lux5qc"
                     href="mailto:Sales@minerva-automation.com?subject=Book%20demo"
-                    onclick="event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();window.location.href='mailto:Sales@minerva-automation.com?subject=Book%20demo';"
                   target="_blank"
                   rel="noopener"
                   ><div
@@ -15488,7 +15396,6 @@
                     style="transform: none"
                   >
                     <p
-                    href="mailto:Sales@minerva-automation.com?subject=Book%20demo"
                         --font-selector: R0Y7R2Vpc3QtcmVndWxhcg==;
                         --framer-font-family: 'Geist', 'Geist Placeholder',
                           sans-serif;
@@ -15529,10 +15436,9 @@
                     >
                       <span style="white-space: nowrap"
                         ><span
-                          style="
-                            display: inline-block;
-                            opacity: 0.001;
-                            transform: translateX(0px) translateY(10px) scale(1)
+                          <div
+                            style="
+                              width: 100%;
                               rotate(0deg) skewX(0deg) skewY(0deg);
                           "
                           >P</span
@@ -15543,7 +15449,6 @@
                             transform: translateX(0px) translateY(10px) scale(1)
                               rotate(0deg) skewX(0deg) skewY(0deg);
                           "
-                          >l</span
                         ><span
                           style="
                             display: inline-block;
@@ -16177,7 +16082,6 @@
                           <!--$-->
                           <div
                             style="
-                            onclick="event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();window.location.href='mailto:Sales@minerva-automation.com?subject=Book%20demo';"
                               width: 100%;
                               height: 100%;
                               background: rgba(247, 247, 250, 0);
@@ -16189,7 +16093,6 @@
                             "
                           >
                             <svg
-                              onclick="event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();window.location.href='mailto:Sales@minerva-automation.com?subject=Book%20demo';"
                               width="100%"
                               height="100%"
                               viewBox="0 0 1 1"
