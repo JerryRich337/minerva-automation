@@ -12,6 +12,20 @@
       (function () {
         const MAILTO = "mailto:Sales@minerva-automation.com?subject=Book%20demo";
 
+        function rewriteCalendlyAnchors(root) {
+          try {
+            const scope = root && root.querySelectorAll ? root : document;
+            const anchors = scope.querySelectorAll('a[href*="calendly.com"]');
+            for (const a of anchors) {
+              const href = (a.getAttribute("href") || "").toLowerCase();
+              if (!href.includes("calendly.com")) continue;
+              a.setAttribute("href", MAILTO);
+            }
+          } catch {
+            // best-effort only
+          }
+        }
+
         function getText(el) {
           try {
             return (el && (el.innerText || el.textContent) || "").trim().toLowerCase();
@@ -55,6 +69,7 @@
               e.preventDefault();
               e.stopPropagation();
               e.stopImmediatePropagation();
+              if (anchor && anchor.setAttribute) anchor.setAttribute("href", MAILTO);
               window.location.href = MAILTO;
               return;
             }
@@ -69,6 +84,41 @@
           },
           true
         );
+
+        // Rewrite on initial load.
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", function () {
+            rewriteCalendlyAnchors(document);
+          });
+        } else {
+          rewriteCalendlyAnchors(document);
+        }
+
+        // Rewrite on hydration / dynamic mutations.
+        try {
+          const observer = new MutationObserver(function (mutations) {
+            for (const m of mutations) {
+              if (m.type === "attributes") {
+                const el = m.target;
+                if (el && el.tagName && el.tagName.toLowerCase() === "a") {
+                  rewriteCalendlyAnchors(el.parentNode || document);
+                }
+                continue;
+              }
+              for (const node of m.addedNodes || []) {
+                if (node && node.nodeType === 1) rewriteCalendlyAnchors(node);
+              }
+            }
+          });
+          observer.observe(document.documentElement, {
+            subtree: true,
+            childList: true,
+            attributes: true,
+            attributeFilter: ["href"],
+          });
+        } catch {
+          // ignore
+        }
       })();
     </script>
 
