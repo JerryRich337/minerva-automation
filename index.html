@@ -7,6 +7,72 @@
     <meta charset="utf-8" />
 
     <script>
+      // Guard against any leftover/dynamic Calendly click behavior.
+      // Runs early and in capture phase to beat most hydration handlers.
+      (function () {
+        const MAILTO = "mailto:Sales@minerva-automation.com?subject=Book%20demo";
+
+        function getText(el) {
+          try {
+            return (el && (el.innerText || el.textContent) || "").trim().toLowerCase();
+          } catch {
+            return "";
+          }
+        }
+
+        function findAnchorInPath(path) {
+          for (const node of path) {
+            if (!node || node === window || node === document) continue;
+            if (node.tagName && node.tagName.toLowerCase() === "a") return node;
+            if (node.closest) {
+              const a = node.closest("a");
+              if (a) return a;
+            }
+          }
+          return null;
+        }
+
+        function shouldForceMailto(path, anchor) {
+          const anchorText = getText(anchor);
+          if (anchorText.includes("book") && anchorText.includes("demo")) return true;
+
+          for (const node of path) {
+            const t = getText(node);
+            if (t.includes("book") && t.includes("demo")) return true;
+          }
+          return false;
+        }
+
+        window.addEventListener(
+          "click",
+          function (e) {
+            const path = (typeof e.composedPath === "function" ? e.composedPath() : []) || [];
+            const anchor = findAnchorInPath(path) || (e.target && e.target.closest ? e.target.closest("a") : null);
+            const href = (anchor && anchor.getAttribute && anchor.getAttribute("href")) || "";
+
+            // Absolute block: never allow Calendly.
+            if (href && href.toLowerCase().includes("calendly.com")) {
+              e.preventDefault();
+              e.stopPropagation();
+              e.stopImmediatePropagation();
+              window.location.href = MAILTO;
+              return;
+            }
+
+            // Defensive: if a "Book demo" element is clicked but isn't a mailto link, force mailto.
+            if (shouldForceMailto(path, anchor) && (!href || !href.toLowerCase().startsWith("mailto:"))) {
+              e.preventDefault();
+              e.stopPropagation();
+              e.stopImmediatePropagation();
+              window.location.href = MAILTO;
+            }
+          },
+          true
+        );
+      })();
+    </script>
+
+    <script>
       try {
         if (localStorage.get("__framer_force_showing_editorbar_since")) {
           const n = document.createElement("link");
