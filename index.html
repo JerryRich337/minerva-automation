@@ -119,6 +119,61 @@
         } catch {
           // ignore
         }
+
+        // Some runtimes/extensions may continuously rewrite hrefs; re-apply periodically.
+        try {
+          setInterval(function () {
+            rewriteCalendlyAnchors(document);
+          }, 500);
+        } catch {
+          // ignore
+        }
+
+        // Intercept common navigation APIs in case a click handler opens Calendly directly.
+        try {
+          const originalOpen = window.open;
+          window.open = function (url, target, features) {
+            try {
+              const u = String(url || "");
+              if (u.toLowerCase().includes("calendly.com")) url = MAILTO;
+            } catch {
+              // ignore
+            }
+            return originalOpen.call(this, url, target, features);
+          };
+        } catch {
+          // ignore
+        }
+
+        try {
+          const originalAssign = Location.prototype.assign;
+          Location.prototype.assign = function (url) {
+            try {
+              const u = String(url || "");
+              if (u.toLowerCase().includes("calendly.com")) url = MAILTO;
+            } catch {
+              // ignore
+            }
+            return originalAssign.call(this, url);
+          };
+        } catch {
+          // ignore
+        }
+
+        try {
+          const originalReplace = Location.prototype.replace;
+          Location.prototype.replace = function (url) {
+            try {
+              const u = String(url || "");
+              if (u.toLowerCase().includes("calendly.com")) url = MAILTO;
+            } catch {
+              // ignore
+            }
+            return originalReplace.call(this, url);
+          };
+        } catch {
+          // ignore
+        }
       })();
     </script>
 
